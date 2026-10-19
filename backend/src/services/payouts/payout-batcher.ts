@@ -616,12 +616,18 @@ export function startPayoutBatchWorker(
   batcher: Pick<PayoutBatcher, 'runDue'> = payoutBatcher,
   intervalMs: number = DEFAULT_PAYOUT_BATCH_INTERVAL_MS,
 ): PayoutBatchWorker {
+  let running = false;
+
   const tick = async (): Promise<PayoutRunReport | undefined> => {
+    if (running) return undefined;
+    running = true;
     try {
       return await batcher.runDue();
     } catch (error) {
       console.error('[payouts] Batch run failed', error);
       return undefined;
+    } finally {
+      running = false;
     }
   };
 

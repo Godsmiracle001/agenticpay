@@ -6,7 +6,7 @@
  */
 
 import type { Request, Response, NextFunction } from 'express';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 
 export interface SecurityConfig {
   /** Maximum payout amount before additional verification */
@@ -262,11 +262,19 @@ export function verifyRequestSignature(
   signature: string,
   secret: string
 ): boolean {
-  const expectedSignature = createHash('sha256')
-    .update(payload + secret)
-    .digest('hex');
-  
-  return signature === expectedSignature;
+  if (typeof payload !== 'string' || typeof signature !== 'string' || typeof secret !== 'string' || secret.length === 0) {
+    return false;
+  }
+
+  // HMAC binds the secret as a key instead of concatenating it into the message.
+  // Compare decoded bytes in constant time and reject malformed lengths before
+  // calling timingSafeEqual (which otherwise throws on length mismatch).
+  const expected = createHmac('sha256', secret).update(payload, 'utf8').digest();
+  const provided = signature.replace(/^sha256=/i, '');
+  if (!/^[0-9a-f]{64}$/i.test(provided)) return false;
+
+  const providedBytes = Buffer.from(provided, 'hex');
+  return providedBytes.length === expected.length && timingSafeEqual(providedBytes, expected);
 }
 
 /**

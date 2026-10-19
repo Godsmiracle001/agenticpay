@@ -1,5 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { PayoutBatcher, type ProviderBatchRequest, type PayoutBatchProvider } from '../payout-batcher.js';
+import {
+  PayoutBatcher,
+  startPayoutBatchWorker,
+  type ProviderBatchRequest,
+  type PayoutBatchProvider,
+} from '../payout-batcher.js';
 import { MoneyMovementAuditLog } from '../../../audit/money-movement-audit.js';
 import { PayoutAnomalyDetector } from '../payout-anomaly-detector.js';
 
@@ -288,5 +293,29 @@ describe('PayoutBatcher — Issue #1008', () => {
         'payout.cancelled',
       ]);
     });
+  });
+});
+
+describe('startPayoutBatchWorker', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('skips an interval while the previous batch pass is still running', async () => {
+    vi.useFakeTimers();
+    let release!: () => void;
+    const runDue = vi.fn(() => new Promise<undefined>((resolve) => {
+      release = () => resolve(undefined);
+    }));
+    const worker = startPayoutBatchWorker({ runDue }, 1_000);
+
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(runDue).toHaveBeenCalledTimes(1);
+
+    release();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(runDue).toHaveBeenCalledTimes(2);
+
+    worker.stop();
   });
 });
